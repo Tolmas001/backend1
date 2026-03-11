@@ -19,7 +19,7 @@ const app: Application = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 8000;
 
-// Create HTTP server and Socket.io instance
+
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
