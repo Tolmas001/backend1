@@ -11,5 +11,10 @@
             "src": "/(.*)",
             "dest": "src/index.ts"
         }
-    ]
+    ],
+    "env": {
+        "DATABASE_URL": "postgres://06db61830e2b7ba5dddd1ac2e6ab37597bedd7c2190d654eb0a1cbf6fe7fc852:sk__avxg5OQrH2V07J5Lfh1X@db.prisma.io:5432/postgres?sslmode=require",
+        "JWT_SECRET": "wishvault-secret-key-change-in-production",
+        "CORS_ORIGIN": "https://frontend1-psi.vercel.app"
+    }
 }

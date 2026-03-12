@@ -5,7 +5,6 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { Server } from 'socket.io';
 import http from 'http';
 import authRoutes from './routes/auth';
 import listRoutes from './routes/lists';
@@ -19,44 +18,71 @@ const app: Application = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 8000;
 
+// Check if running in serverless environment
+const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
 
+// Create HTTP server and Socket.io instance
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: process.env.CORS_ORIGIN || "http://localhost:3000",
-        methods: ["GET", "POST", "PUT", "DELETE"],
-    }
-});
 
-// Make io available globally
+let io: any = null;
+
+if (!isServerless) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Server } = require('socket.io');
+    io = new Server(server, {
+        cors: {
+            origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+            methods: ["GET", "POST", "PUT", "DELETE"],
+        }
+    });
+}
+
+// Make io available globally (null for serverless)
 app.set('io', io);
 
-// Socket.io connection handling
-io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
+// Socket.io connection handling - only for non-serverless
+if (io) {
+    io.on('connection', (socket: any) => {
+        console.log('Client connected:', socket.id);
 
-    // Join a room for a specific list
-    socket.on('join_list', (listId: string) => {
-        socket.join(`list_${listId}`);
-        console.log(`Socket ${socket.id} joined list_${listId}`);
-    });
+        // Join a room for a specific list
+        socket.on('join_list', (listId: string) => {
+            socket.join(`list_${listId}`);
+            console.log(`Socket ${socket.id} joined list_${listId}`);
+        });
 
-    socket.on('leave_list', (listId: string) => {
-        socket.leave(`list_${listId}`);
-    });
+        socket.on('leave_list', (listId: string) => {
+            socket.leave(listId);
+        });
 
-    socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+        socket.on('disconnect', () => {
+            console.log('Client disconnected:', socket.id);
+        });
     });
-});
+}
 
 // Middleware
 app.use(express.json());
 
-// CORS configuration - must specify origin when credentials is true
+// CORS configuration - support multiple origins for Vercel
 const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
+const allowedOrigins = corsOrigin.split(',').map(o => o.trim());
+
 app.use(cors({
-    origin: corsOrigin,
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, curl requests)
+        if (!origin) return callback(null, true);
+
+        // Check if origin is in allowed list
+        if (allowedOrigins.includes(origin) ||
+            allowedOrigins.includes('*') ||
+            origin.endsWith('.vercel.app') ||
+            origin.endsWith('.localhost:3000')) {
+            return callback(null, true);
+        }
+
+        callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
@@ -64,7 +90,16 @@ app.use(cors({
 
 // Handle preflight requests
 app.options("*", cors({
-    origin: corsOrigin,
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin) ||
+            allowedOrigins.includes('*') ||
+            origin.endsWith('.vercel.app') ||
+            origin.endsWith('.localhost:3000')) {
+            return callback(null, true);
+        }
+        callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
